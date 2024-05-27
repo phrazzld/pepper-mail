@@ -29,9 +29,6 @@ func main() {
 }
 
 func fetchEmails(username, password string) ([]string, error) {
-	/* imapClient, err := client.DialTLS("127.0.0.1:1143", &tls.Config{ */
-	/* 	InsecureSkipVerify: true, */
-	/* }) */
 	imapClient, err := client.Dial("127.0.0.1:1143")
 	if err != nil {
 		return nil, err
