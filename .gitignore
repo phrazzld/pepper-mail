@@ -1,0 +1,19 @@
+.env
+
+# Vendor directory
+vendor/
+
+# Go module files
+go.mod
+go.sum
+
+# Build artifacts
+*.o
+*.s
+main.go.o
+
+# Test files
+*_test.go
+
+# Temporary files
+*.go.gocache
