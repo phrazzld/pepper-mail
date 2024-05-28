@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"github.com/emersion/go-imap"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net/mail"
 	"os"
+	"time"
 )
 
 func main() {
@@ -19,44 +21,65 @@ func main() {
 
 	emailUser := os.Getenv("PROTONMAIL_EMAIL")
 	emailPass := os.Getenv("PROTONMAIL_PASSWORD")
+	imapHost := os.Getenv("PROTONMAIL_IMAP_HOST")
+	imapPort := os.Getenv("PROTONMAIL_IMAP_PORT")
+
+	if emailUser == "" || emailPass == "" || imapHost == "" || imapPort == "" {
+		log.Fatal("missing email credentials")
+	}
 
 	// fetch emails
-	emails, err := fetchEmails(emailUser, emailPass)
+	emails, ids, err := fetchEmails(emailUser, emailPass, imapHost, imapPort)
+
+	fmt.Println("fetched emails:", emails)
+	fmt.Println("ids:", ids)
+
+	if err := saveDraft(imapHost, imapPort, emailUser, emailPass, emailUser, "phrazzld@pm.me", "Hello there!", "It's Pepper!"); err != nil {
+		log.Fatal(err)
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("fetched emails:", emails)
 }
 
-func fetchEmails(username, password string) ([]string, error) {
-	imapClient, err := client.Dial("127.0.0.1:1143")
+func fetchEmails(username, password, host, port string) ([]string, []uint32, error) {
+	fmt.Println("fetching emails...")
+	imapAddress := fmt.Sprintf("%s:%s", host, port)
+	imapClient, err := client.Dial(imapAddress)
+	fmt.Println("connected to imap server")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer imapClient.Logout()
 
 	// manually start tls session
+	fmt.Println("starting tls session...")
 	if err = imapClient.StartTLS(&tls.Config{InsecureSkipVerify: true}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// login
+	fmt.Println("logging in...")
 	if err := imapClient.Login(username, password); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// select inbox
+	fmt.Println("selecting inbox...")
 	_, err = imapClient.Select("INBOX", false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// search unseen emails
 	criteria := imap.NewSearchCriteria()
 	criteria.WithoutFlags = []string{"\\Seen"}
 	ids, err := imapClient.Search(criteria)
+	fmt.Println("searched emails")
+	fmt.Println("ids:", ids)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var emails []string
@@ -90,5 +113,34 @@ func fetchEmails(username, password string) ([]string, error) {
 		}
 	}
 
-	return emails, nil
+	return emails, ids, nil
+}
+
+func saveDraft(host, port, username, password, from, to, subject, body string) error {
+	imapAddress := fmt.Sprintf("%s:%s", host, port)
+	imapClient, err := client.Dial(imapAddress)
+	if err != nil {
+		return err
+	}
+	defer imapClient.Logout()
+
+	if err = imapClient.StartTLS(&tls.Config{InsecureSkipVerify: true}); err != nil {
+		return err
+	}
+
+	if err = imapClient.Login(username, password); err != nil {
+		return err
+	}
+
+	// Create a new MIME message
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s", from, to, subject, body)
+	msgData := []byte(msg)
+
+	// Use current time for the date parameter
+	date := time.Now()
+	// Specify flags
+	flags := []string{"\\Draft"} // Adjust this based on your IMAP server capabilities
+
+	// Append the message to the "Drafts" folder
+	return imapClient.Append("Drafts", flags, date, bytes.NewReader(msgData))
 }
